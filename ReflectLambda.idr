@@ -167,60 +167,65 @@ Quotable Lambda' TT where
   quote (TmInt' i) = `(TmInt' ~(quote i))
   quote (TmBool' b) = `(TmBool' ~(quote b))
 
-char : Char -> Grammar Char True Char
-char c = terminal (\a => if a == c then Just a else Nothing)
-
-digit : Grammar Char True Char
-digit = terminal (\a => if isDigit a then Just a else Nothing)
-
-fromMaybe : Maybe a -> Grammar Char False a
-fromMaybe res =
-  case res of
-    Nothing => fail "not a natural number"
-    Just a => pure a
-
-nat : Grammar Char True Nat
-nat = map (parsePositive . pack) (some digit) >>= fromMaybe
-
-int : Grammar Char True Int
-int = map (parseInteger . pack) (some digit) >>= fromMaybe
-
-symbol : Char -> List Char -> Grammar Char True (List Char)
-symbol c [] = do
-  c' <- char c
-  pure [c]
-symbol c (d :: ds) = do
-  c' <- char c
-  rest <- symbol d ds
-  pure (c' :: rest)
-
-letter : Grammar Char True Char
-letter = terminal (\a => if isLower a then Just a else Nothing)
-
-mutual
-  tyAtom : Grammar Char True Ty
-  tyAtom =
-    (do
-       symbol 'b' (unpack "ool")
-       pure TyBool) <|>
-    (do
-       symbol 'i' (unpack "nt")
-       pure TyInt) <|>
-    (do
-       char '('
-       t <- ty
-       char ')'
-       pure t)
-
-  ty : Grammar Char True Ty
-  ty = do
-    t <- tyAtom
-    ts <- many (many (char ' ') *> char '-' *> char '>' *> many (char ' ') *> tyAtom)
-    pure (foldr TyArr t ts)
-
 grammar : Grammar Char True Lambda'
 grammar = grammar'
   where
+    char : Char -> Grammar Char True Char
+    char c = terminal (\a => if a == c then Just a else Nothing)
+
+    digit : Grammar Char True Char
+    digit = terminal (\a => if isDigit a then Just a else Nothing)
+
+    fromMaybe : Maybe a -> Grammar Char False a
+    fromMaybe res =
+      case res of
+        Nothing => fail "not a natural number"
+        Just a => pure a
+
+    nat : Grammar Char True Nat
+    nat = map (parsePositive . pack) (some digit) >>= fromMaybe
+
+    int : Grammar Char True Int
+    int = map (parseInteger . pack) (some digit) >>= fromMaybe
+
+    symbol : Char -> List Char -> Grammar Char True (List Char)
+    symbol c [] = do
+      c' <- char c
+      pure [c]
+    symbol c (d :: ds) = do
+      c' <- char c
+      rest <- symbol d ds
+      pure (c' :: rest)
+
+    letter : Grammar Char True Char
+    letter = terminal (\a => if isLower a then Just a else Nothing)
+
+    mutual
+      tyAtom : Grammar Char True Ty
+      tyAtom =
+        (do
+           symbol 'b' (unpack "ool")
+           pure TyBool) <|>
+        (do
+           symbol 'i' (unpack "nt")
+           pure TyInt) <|>
+        (do
+           char '('
+           t <- ty
+           char ')'
+           pure t)
+
+      ty : Grammar Char True Ty
+      ty = do
+        t <- tyAtom
+        ts <- many $ do
+          many (char ' ')
+          char '-'
+          char '>'
+          many (char ' ')
+          tyAtom
+        pure (foldr TyArr t ts)
+
     mutual
       atom : Grammar Char True Lambda'
       atom =
@@ -259,11 +264,6 @@ parseLambda input =
   case parse grammar (unpack input) of
     Left _ => Nothing
     Right (a, _) => Just a
-
-lookupVect : {n : Nat} -> String -> Vect n (String, a) -> Maybe a
-lookupVect s [] = Nothing
-lookupVect s ((s', x) :: xs) =
-  if s == s' then Just x else lookupVect s xs
 
 typecheck : Lambda' -> Maybe (ty : Ty ** Lambda [] ty)
 typecheck (TmVar' _) = Nothing
@@ -309,8 +309,6 @@ ofType str ty =
 
 example_3 : Maybe (Int -> Int -> Int)
 example_3 = ofType "\\x : int. \\y : int. x" (TyArr TyInt (TyArr TyInt TyInt))
-
--- Elaborator reflection
 
 fromTT : TT -> Elab Ty
 fromTT tt =
