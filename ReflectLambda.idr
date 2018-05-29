@@ -349,27 +349,27 @@ reflect str = do
         , TermPart (quote ty)
         ]
     Yes prf => do
-      reflect_inner {ty} [] [] l'
+      raw <- reflect_inner {ty} [] [] l'
+      fill raw
+      solve
 where
   reflect_inner
-     : {ty : Ty}
+      : {ty : Ty}
     -> (ns : Vect n TTName)
     -> (v : Vect n Ty)
-    -> Lambda v ty -> Elab ()
-  reflect_inner ns v (TmVar ix) =
-    case index ix v of
-      TyArr _ _ => apply (Var $ index ix ns) [False] *> pure ()
-      _ => exact (Var $ index ix ns)
+    -> Lambda v ty -> Elab Raw
+  reflect_inner ns v (TmVar ix) = pure (Var $ index ix ns)
   reflect_inner ns v (TmApp {ty} {ty'} f x) = do
-    reflect_inner ns v f
-    solve
-    reflect_inner ns v x
+    f' <- reflect_inner ns v f
+    x' <- reflect_inner ns v x
+    pure (RApp f' x')
   reflect_inner ns v (TmAbs {ty} e) = do
     arg <- gensym "arg"
-    intro arg
-    reflect_inner (arg :: ns) (ty :: v) e
-  reflect_inner ns v (TmInt i) = exact (quote i)
-  reflect_inner ns v (TmBool b) = exact (quote b)
+    e' <- reflect_inner (arg :: ns) (ty :: v) e
+    ty' <- forget $ toTT ty
+    pure (RBind arg (Lam ty') e')
+  reflect_inner ns v (TmInt i) = pure (quote i)
+  reflect_inner ns v (TmBool b) = pure (quote b)
 
 test1 : (Int -> Int) -> Int -> Int
 test1 = %runElab (reflect "\\f : int -> int. \\x : int. f x")
@@ -379,6 +379,9 @@ test2 = %runElab (reflect "\\x : int. x")
 
 test3 : Int -> Bool
 test3 = %runElab (reflect "\\x : int. true")
+
+test4 : Bool
+test4 = %runElab (reflect "(\\x : bool. x) true")
 
 
 main : IO ()
