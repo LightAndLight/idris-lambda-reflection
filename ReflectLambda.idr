@@ -5,6 +5,7 @@ import Data.Vect
 import Data.HVect
 import Data.String
 import Text.Parser
+import Pruviloj.Core
 import Pruviloj.Derive.DecEq
 
 %default total
@@ -214,7 +215,7 @@ mutual
   ty : Grammar Char True Ty
   ty = do
     t <- tyAtom
-    ts <- many (char '-' *> char '>' *> tyAtom)
+    ts <- many (many (char ' ') *> char '-' *> char '>' *> many (char ' ') *> tyAtom)
     pure (foldr TyArr t ts)
 
 grammar : Grammar Char True Lambda'
@@ -223,9 +224,9 @@ grammar = grammar'
     mutual
       atom : Grammar Char True Lambda'
       atom =
-        TmVar' . pack <$> some letter <|>
         const (TmBool' True) <$> symbol 't' (unpack "rue") <|>
         const (TmBool' False) <$> symbol 'f' (unpack "alse") <|>
+        TmVar' . pack <$> some letter <|>
         TmInt' <$> int <|>
         do
           const () <$> char '('
@@ -309,14 +310,7 @@ ofType str ty =
 example_3 : Maybe (Int -> Int -> Int)
 example_3 = ofType "\\x : int. \\y : int. x" (TyArr TyInt (TyArr TyInt TyInt))
 
-main : IO ()
-main =
-  case example_3 of
-    Just f => print $ f 1 3
-    Nothing => print 2
-
-{-
-Elaborator reflection
+-- Elaborator reflection
 
 fromTT : TT -> Elab Ty
 fromTT tt =
@@ -325,6 +319,12 @@ fromTT tt =
     `(Int) => pure TyInt
     `(Bool) => pure TyBool
     _ => fail [TextPart "Cannot convert", TermPart tt, TextPart "to", TermPart `(Ty)]
+
+||| 'toTT ty' is morally 'quote (reflectTy ty)'
+toTT : Ty -> TT
+toTT (TyArr a b) = `(~(toTT a) -> ~(toTT b))
+toTT TyBool = `(Bool)
+toTT TyInt = `(Int)
 
 reflect : String -> Elab ()
 reflect str = do
@@ -349,23 +349,40 @@ reflect str = do
         , TermPart (quote ty)
         ]
     Yes prf => do
-      [hole_0, hole_2] <- getHoles
-        | otherwise => fail [TextPart "incorrect number of holes"]
-      focus hole_2
-      reflect_inner {ty} hole_2 [] [] l'
+      reflect_inner {ty} [] [] l'
 where
   reflect_inner
      : {ty : Ty}
-    -> TTName
     -> (ns : Vect n TTName)
     -> (v : Vect n Ty)
     -> Lambda v ty -> Elab ()
-  reflect_inner hole ns v (TmVar ix) = fill $ Var (index ix ns)
-  reflect_inner hole ns v (TmApp f x) = debug {a=()}
-  reflect_inner hole ns v (TmAbs {ty} e) = debug {a=()}
-  reflect_inner hole ns v (TmInt i) = fill (quote i)
-  reflect_inner hole ns v (TmBool b) = fill (quote b)
+  reflect_inner ns v (TmVar ix) =
+    case index ix v of
+      TyArr _ _ => apply (Var $ index ix ns) [False] *> pure ()
+      _ => exact (Var $ index ix ns)
+  reflect_inner ns v (TmApp {ty} {ty'} f x) = do
+    reflect_inner ns v f
+    solve
+    reflect_inner ns v x
+  reflect_inner ns v (TmAbs {ty} e) = do
+    arg <- gensym "arg"
+    intro arg
+    reflect_inner (arg :: ns) (ty :: v) e
+  reflect_inner ns v (TmInt i) = exact (quote i)
+  reflect_inner ns v (TmBool b) = exact (quote b)
 
-test : Int -> Int
-test = %runElab (reflect "\\x : int. x")
--}
+test1 : (Int -> Int) -> Int -> Int
+test1 = %runElab (reflect "\\f : int -> int. \\x : int. f x")
+
+test2 : Int -> Int
+test2 = %runElab (reflect "\\x : int. x")
+
+test3 : Int -> Bool
+test3 = %runElab (reflect "\\x : int. true")
+
+
+main : IO ()
+main =
+  case example_3 of
+    Just f => print $ f 1 3
+    Nothing => print 2
