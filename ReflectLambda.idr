@@ -369,17 +369,20 @@ where
   reflect_inner ns v (TmInt i) = pure (quote i)
   reflect_inner ns v (TmBool b) = pure (quote b)
 
+
+term syntax reflectLC [x] = %runElab (reflect x)
+
 test1 : (Int -> Int) -> Int -> Int
-test1 = %runElab (reflect "\\f : int -> int. \\x : int. f x")
+test1 = reflectLC "\\f : int -> int. \\x : int. f x"
 
 test2 : Int -> Int
-test2 = %runElab (reflect "\\x : int. x")
+test2 = reflectLC "\\x : int. x"
 
 test3 : Int -> Bool
-test3 = %runElab (reflect "\\x : int. true")
+test3 = reflectLC "\\x : int. true"
 
 test4 : Bool
-test4 = %runElab (reflect "(\\x : bool. x) true")
+test4 = reflectLC "(\\x : bool. x) true"
 
 
 main : IO ()
